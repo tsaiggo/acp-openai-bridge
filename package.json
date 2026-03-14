@@ -1,0 +1,15 @@
+{
+  "name": "acp-openai-bridge",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.16.1"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.10"
+  }
+}
