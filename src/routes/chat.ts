@@ -16,21 +16,7 @@ import {
   destroySession,
 } from "../copilot.js";
 import { isModelAvailable } from "./models.js";
-
-// ---------------------------------------------------------------------------
-// Error helpers
-// ---------------------------------------------------------------------------
-
-function errorResponse(
-  status: number,
-  message: string,
-  type: string = "invalid_request_error",
-): Response {
-  return Response.json(
-    { error: { message, type, code: null } },
-    { status },
-  );
-}
+import { badRequest, notImplemented, internalError } from "../errors.js";
 
 // ---------------------------------------------------------------------------
 // handleChatCompletion
@@ -52,31 +38,31 @@ export async function handleChatCompletion(req: Request): Promise<Response> {
   try {
     body = (await req.json()) as OpenAIChatCompletionRequest;
   } catch {
-    return errorResponse(400, "Invalid JSON in request body");
+    return badRequest("Invalid JSON in request body");
   }
 
   // --- Validate fields ------------------------------------------------------
 
   if (!body.model || typeof body.model !== "string") {
-    return errorResponse(400, "'model' is required and must be a string");
+    return badRequest("'model' is required and must be a string", "model");
   }
 
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
-    return errorResponse(400, "'messages' is required and must be a non-empty array");
+    return badRequest("'messages' is required and must be a non-empty array", "messages");
   }
 
   // --- Streaming not supported ----------------------------------------------
 
   if (body.stream === true) {
-    return errorResponse(501, "Streaming not yet implemented", "not_implemented");
+    return notImplemented("Streaming not yet implemented");
   }
 
   // --- Model validation -----------------------------------------------------
 
   if (!isModelAvailable(body.model)) {
-    return errorResponse(
-      400,
+    return badRequest(
       `Model '${body.model}' is not available. Use GET /v1/models to list available models.`,
+      "model",
     );
   }
 
@@ -110,7 +96,7 @@ export async function handleChatCompletion(req: Request): Promise<Response> {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[chat] Error processing completion: ${msg}`);
-    return errorResponse(500, `Internal error: ${msg}`, "server_error");
+    return internalError(`Internal error: ${msg}`);
   } finally {
     if (sessionId) {
       await destroySession(sessionId);

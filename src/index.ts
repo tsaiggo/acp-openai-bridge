@@ -9,6 +9,7 @@ import { startCopilot, createSession, destroySession } from "./copilot.js";
 import { setCachedModels, handleModels } from "./routes/models.js";
 import { handleHealth } from "./routes/health.js";
 import { handleChatCompletion } from "./routes/chat.js";
+import { notFound, internalError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
 // CORS headers applied to every response
@@ -59,42 +60,37 @@ async function discoverModels(): Promise<void> {
 const server = Bun.serve({
   port: 4000,
   async fetch(req: Request): Promise<Response> {
-    const url = new URL(req.url);
-    const { pathname } = url;
+    try {
+      const url = new URL(req.url);
+      const { pathname } = url;
 
-    // Handle CORS preflight
-    if (req.method === "OPTIONS") {
-      return withCors(new Response(null, { status: 204 }));
+      // Handle CORS preflight
+      if (req.method === "OPTIONS") {
+        return withCors(new Response(null, { status: 204 }));
+      }
+
+      // Route: GET /v1/models
+      if (req.method === "GET" && pathname === "/v1/models") {
+        return withCors(handleModels());
+      }
+
+      // Route: GET /v1/health
+      if (req.method === "GET" && pathname === "/v1/health") {
+        return withCors(handleHealth());
+      }
+
+      // Route: POST /v1/chat/completions
+      if (req.method === "POST" && pathname === "/v1/chat/completions") {
+        return withCors(await handleChatCompletion(req));
+      }
+
+      // 404 — unknown route
+      return withCors(notFound(`Not found: ${req.method} ${pathname}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[server] Unhandled error: ${msg}`);
+      return withCors(internalError("An unexpected error occurred"));
     }
-
-    // Route: GET /v1/models
-    if (req.method === "GET" && pathname === "/v1/models") {
-      return withCors(handleModels());
-    }
-
-    // Route: GET /v1/health
-    if (req.method === "GET" && pathname === "/v1/health") {
-      return withCors(handleHealth());
-    }
-
-    // Route: POST /v1/chat/completions
-    if (req.method === "POST" && pathname === "/v1/chat/completions") {
-      return withCors(await handleChatCompletion(req));
-    }
-
-    // 404 — unknown route
-    return withCors(
-      Response.json(
-        {
-          error: {
-            message: `Not found: ${req.method} ${pathname}`,
-            type: "not_found_error",
-            code: 404,
-          },
-        },
-        { status: 404 },
-      ),
-    );
   },
 });
 
