@@ -9,8 +9,9 @@ import type {
   OpenAIChatCompletionRequest,
   OpenAIChatCompletionResponse,
   OpenAIChatCompletionStreamChunk,
+  ToolCall,
 } from "../types.js";
-import { convertMessages } from "../convert.js";
+import { convertMessages, parseToolCalls } from "../convert.js";
 import {
   createSession,
   sendPrompt,
@@ -76,8 +77,10 @@ export async function handleChatCompletion(req: Request): Promise<Response> {
     const session = await createSession();
     sessionId = session.sessionId;
 
-    const contentBlocks = convertMessages(body.messages);
+    const contentBlocks = convertMessages(body.messages, body.tools);
     const { content, finishReason } = await sendPrompt(sessionId, contentBlocks);
+
+    const toolCalls = body.tools?.length ? parseToolCalls(content) : null;
 
     const response: OpenAIChatCompletionResponse = {
       id: `chatcmpl-${crypto.randomUUID()}`,
@@ -87,8 +90,14 @@ export async function handleChatCompletion(req: Request): Promise<Response> {
       choices: [
         {
           index: 0,
-          message: { role: "assistant", content },
-          finish_reason: finishReason as OpenAIChatCompletionResponse["choices"][0]["finish_reason"],
+          message: {
+            role: "assistant",
+            content: toolCalls ? null : content,
+            ...(toolCalls ? { tool_calls: toolCalls } : {}),
+          },
+          finish_reason: toolCalls
+            ? "tool_calls"
+            : (finishReason as OpenAIChatCompletionResponse["choices"][0]["finish_reason"]),
         },
       ],
       usage: null,
@@ -126,13 +135,15 @@ async function handleStreamingCompletion(
     const session = await createSession();
     sessionId = session.sessionId;
 
-    const contentBlocks = convertMessages(body.messages);
+    const contentBlocks = convertMessages(body.messages, body.tools);
     const completionId = `chatcmpl-${crypto.randomUUID()}`;
     const created = Math.floor(Date.now() / 1000);
+    const hasTools = !!(body.tools?.length);
 
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
+        let accumulated = "";
 
         const roleChunk: OpenAIChatCompletionStreamChunk = {
           id: completionId,
@@ -152,6 +163,8 @@ async function handleStreamingCompletion(
             sessionId!,
             contentBlocks,
             (text: string) => {
+              accumulated += text;
+
               const contentChunk: OpenAIChatCompletionStreamChunk = {
                 id: completionId,
                 object: "chat.completion.chunk",
@@ -167,6 +180,39 @@ async function handleStreamingCompletion(
             },
           );
 
+          let resolvedFinishReason = finishReason as "stop" | "length" | "content_filter" | "tool_calls";
+          let toolCalls: ToolCall[] | null = null;
+
+          if (hasTools) {
+            toolCalls = parseToolCalls(accumulated);
+            if (toolCalls) {
+              resolvedFinishReason = "tool_calls";
+
+              for (let i = 0; i < toolCalls.length; i++) {
+                const tc = toolCalls[i];
+                const toolChunk: OpenAIChatCompletionStreamChunk = {
+                  id: completionId,
+                  object: "chat.completion.chunk",
+                  created,
+                  model: body.model,
+                  choices: [{
+                    index: 0,
+                    delta: {
+                      tool_calls: [{
+                        index: i,
+                        id: tc.id,
+                        type: "function",
+                        function: { name: tc.function.name, arguments: tc.function.arguments },
+                      }],
+                    },
+                    finish_reason: null,
+                  }],
+                };
+                controller.enqueue(encoder.encode(formatSSEChunk(toolChunk)));
+              }
+            }
+          }
+
           const finalChunk: OpenAIChatCompletionStreamChunk = {
             id: completionId,
             object: "chat.completion.chunk",
@@ -175,7 +221,7 @@ async function handleStreamingCompletion(
             choices: [{
               index: 0,
               delta: {},
-              finish_reason: finishReason as "stop" | "length" | "content_filter" | "tool_calls",
+              finish_reason: resolvedFinishReason,
             }],
           };
           controller.enqueue(encoder.encode(formatSSEChunk(finalChunk)));

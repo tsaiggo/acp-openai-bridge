@@ -146,6 +146,14 @@ export async function startCopilot(): Promise<void> {
           params.sessionId,
           existing + update.content.text,
         );
+      } else if (update.sessionUpdate === "tool_call") {
+        console.log(
+          `[copilot] Tool call: ${update.title} (${update.toolCallId}, status=${update.status ?? "unknown"})`,
+        );
+      } else if (update.sessionUpdate === "tool_call_update") {
+        console.log(
+          `[copilot] Tool call update: ${update.toolCallId} (status=${update.status ?? "unchanged"})`,
+        );
       }
     },
   });
