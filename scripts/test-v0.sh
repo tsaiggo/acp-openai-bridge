@@ -161,8 +161,8 @@ assert "Unknown route returns HTTP 404" \
 assert "Unknown route returns not_found_error type" \
   "echo '$NOTFOUND_BODY' | jq -e '.error.type == \"not_found_error\"'"
 
-assert "Unknown route returns code 404 in body" \
-  "echo '$NOTFOUND_BODY' | jq -e '.error.code == 404'"
+assert "Unknown route returns error with param field" \
+  "echo '$NOTFOUND_BODY' | jq -e 'has(\"error\") and .error | has(\"param\")'"
 
 # ---------------------------------------------------------------------------
 # Summary
