@@ -9,6 +9,7 @@
     "test:v1": "bash scripts/test-v1.sh",
     "test:v2": "bash scripts/test-v2.sh",
     "test:v3": "bash scripts/test-v3.sh",
+    "test:integration": "bash scripts/test-integration.sh",
     "test": "bash scripts/test-v3.sh"
   },
   "dependencies": {
