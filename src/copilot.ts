@@ -33,6 +33,9 @@ let status: "connected" | "disconnected" | "starting" = "disconnected";
 // Accumulated text per session during prompt processing
 const sessionTextBuffers = new Map<string, string>();
 
+// Streaming callbacks per session — registered by streamPrompt(), consumed by sessionUpdate
+const streamCallbacks = new Map<string, (text: string) => void>();
+
 // ---------------------------------------------------------------------------
 // stopReason → OpenAI finish_reason mapping
 // ---------------------------------------------------------------------------
@@ -133,14 +136,17 @@ export async function startCopilot(): Promise<void> {
         update.sessionUpdate === "agent_message_chunk" &&
         update.content.type === "text"
       ) {
-        // Accumulate text for the session
+        const callback = streamCallbacks.get(params.sessionId);
+        if (callback) {
+          callback(update.content.text);
+        }
+
         const existing = sessionTextBuffers.get(params.sessionId) ?? "";
         sessionTextBuffers.set(
           params.sessionId,
-          existing + update.content.text
+          existing + update.content.text,
         );
       }
-      // We silently consume all other update types (tool_call, plan, etc.)
     },
   });
 
@@ -226,6 +232,41 @@ export async function sendPrompt(
 }
 
 // ---------------------------------------------------------------------------
+// streamPrompt
+// ---------------------------------------------------------------------------
+
+export async function streamPrompt(
+  sessionId: string,
+  contentBlocks: ContentBlock[],
+  onChunk: (text: string) => void,
+): Promise<{ finishReason: string }> {
+  if (!connection || status !== "connected") {
+    throw new Error("Copilot not connected. Call startCopilot() first.");
+  }
+
+  streamCallbacks.set(sessionId, onChunk);
+
+  console.log(`[copilot] Streaming prompt to session ${sessionId} ...`);
+
+  try {
+    const promptResult = await connection.prompt({
+      sessionId,
+      prompt: contentBlocks,
+    });
+
+    const finishReason = mapStopReason(promptResult.stopReason);
+    console.log(
+      `[copilot] Stream complete: stopReason=${promptResult.stopReason} → finishReason=${finishReason}`,
+    );
+
+    return { finishReason };
+  } finally {
+    streamCallbacks.delete(sessionId);
+    sessionTextBuffers.delete(sessionId);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // destroySession
 // ---------------------------------------------------------------------------
 
@@ -270,6 +311,7 @@ export function stopCopilot(): void {
   connection = null;
   status = "disconnected";
   sessionTextBuffers.clear();
+  streamCallbacks.clear();
   console.log("[copilot] Stopped");
 }
 
