@@ -6,7 +6,10 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "test:v0": "bash scripts/test-v0.sh",
-    "test:v1": "bash scripts/test-v1.sh"
+    "test:v1": "bash scripts/test-v1.sh",
+    "test:v2": "bash scripts/test-v2.sh",
+    "test:v3": "bash scripts/test-v3.sh",
+    "test": "bash scripts/test-v3.sh"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.16.1"
