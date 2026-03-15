@@ -8,6 +8,7 @@
 import { startCopilot, createSession, destroySession } from "./copilot.js";
 import { setCachedModels, handleModels } from "./routes/models.js";
 import { handleHealth } from "./routes/health.js";
+import { handleChatCompletion } from "./routes/chat.js";
 
 // ---------------------------------------------------------------------------
 // CORS headers applied to every response
@@ -57,7 +58,7 @@ async function discoverModels(): Promise<void> {
 
 const server = Bun.serve({
   port: 4000,
-  fetch(req: Request): Response {
+  async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const { pathname } = url;
 
@@ -74,6 +75,11 @@ const server = Bun.serve({
     // Route: GET /v1/health
     if (req.method === "GET" && pathname === "/v1/health") {
       return withCors(handleHealth());
+    }
+
+    // Route: POST /v1/chat/completions
+    if (req.method === "POST" && pathname === "/v1/chat/completions") {
+      return withCors(await handleChatCompletion(req));
     }
 
     // 404 — unknown route

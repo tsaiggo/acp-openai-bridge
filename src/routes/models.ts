@@ -33,6 +33,13 @@ export function setCachedModels(modelIds: string[]): void {
 }
 
 /**
+ * Check whether a model ID exists in the cached model list.
+ */
+export function isModelAvailable(modelId: string): boolean {
+  return cachedModels.some((m) => m.id === modelId);
+}
+
+/**
  * Handle GET /v1/models — returns OpenAI-compatible model list.
  */
 export function handleModels(): Response {
